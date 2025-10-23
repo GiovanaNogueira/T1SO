@@ -1,20 +1,24 @@
 // Livian Essvein 2211667
-// Giovana Nogueira 2220372    
-   
+// Giovana Nogueira 2220372
+
 #ifndef COMMON_H
 #define COMMON_H
 
 #include <stdint.h>
 #include <sys/types.h>
+#include <signal.h>
 
 /* Limites */
 #define MAX_APPS 6
 #define MAX_NAME 16
 
-/* Sinais usados:
-   - SIGUSR1 -> IRQ0 (time-slice a cada 1s)
-   - SIGUSR2 -> IRQ1 (fim de I/O 3s após cada pedido)
-   - SIGALRM -> “acorda kernel” para drenar pipe app->kernel
+/* Sinais usados (sem pipes/sem semáforos):
+   - SIGUSR1 -> IRQ0 (time-slice a cada 1s) [IC -> Kernel]
+   - SIGUSR2 -> IRQ1 (fim de I/O 3s após cada pedido) [IC -> Kernel]
+   - SIGALRM -> DATA App->Kernel (notifica que há mensagem no canal app->kernel)
+   - SIGCONT -> SPACE Kernel->App  (notifica que liberou espaço no canal app->kernel)
+   - SIGHUP  -> DATA Kernel->IC    (notifica dados no canal kernel->ic)
+   - SIGWINCH-> SPACE IC->Kernel   (notifica espaço no canal kernel->ic, se usado)
 */
 
 /* Tipos de mensagens app->kernel */

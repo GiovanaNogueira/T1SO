@@ -12,10 +12,9 @@
 #define C_APP "\x1b[32m"
 #define C_ERR "\x1b[31m"
 
-
 #define PC_MAX      15
-#define QUANTUM     1   // 1 tick (dormimos 1s por tick)
-#define IO_LAT      3   // latência do dispositivo em ticks
+#define QUANTUM     1
+#define IO_LAT      3
 #define MAX_APPS    64
 
 typedef enum { NEW, READY, RUNNING, BLOCKED, FINISHED } state_t;
@@ -25,8 +24,8 @@ typedef struct Proc {
     char    name[8];
     int     pc;
     state_t state;
-    char    rw;          // 'R', 'W' ou '-'
-    int     uses_io;     // 0 = cpu-only, 1 = usa IO
+    char    rw;
+    int     uses_io;
 } Proc;
 
 typedef struct Node {
@@ -123,7 +122,6 @@ static void log_all_done() {
     ts(); printf("SHUTDOWN  " C_SCH "~~" C_RST " Kernel encerrado\n");
 }
 
-
 //  - APP_PROFILE=cpu   -> todos CPU-only (A1..An sem I/O)
 //  - APP_PROFILE=io    -> todos usam I/O
 //  - default (split)   -> A1..A3 CPU-only; A4..A6 usam I/O
@@ -137,7 +135,14 @@ static int app_should_use_io(int idx) {
     return (idx >= 3); // split default
 }
 
-// Pontos determinísticos de I/O p/ quem usa I/O (parecido com seus logs)
+static int get_name_offset() {
+    const char *v = getenv("APP_NAME_OFFSET");
+    if (!v || !*v) return 0;
+    int off = atoi(v);
+    return (off < 0) ? 0 : off;
+}
+
+// Pontos determinísticos de I/O p/ quem usa I/O
 static int will_do_io_now(Proc *p) {
     if (!p->uses_io) return 0;
     if (p->pc==3 || p->pc==5 || p->pc==7 || p->pc==9 || p->pc==10 || p->pc==12) return 1;
@@ -148,11 +153,11 @@ static char io_kind_for(Proc *p) {
     return k ? 'R' : 'W';
 }
 
-// ===== Dispositivo =====
+
 static void start_io(Proc *p) {
     dev_busy   = 1;
     dev_owner  = p;
-    next_irq1_at = now_tick + IO_LAT;
+    next_irq1_at = now_tick + 3;
     log_iostart(p);
 }
 static void on_irq1() {
@@ -166,12 +171,11 @@ static void on_irq1() {
     done->state = READY;
     q_push(&ready_q, done);
 
-    // Pega próximo bloqueado (se houver)
     Proc *next = q_pop(&io_wait_q);
     if (next) start_io(next);
 }
 
-// ===== Agendamento =====
+
 static void try_dispatch() {
     if (current) return;
     current = q_pop(&ready_q);
@@ -189,6 +193,7 @@ static int all_finished() {
 }
 
 int main(int argc, char **argv) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     int req = 3;
     if (argc >= 2) {
         req = atoi(argv[1]);
@@ -199,26 +204,24 @@ int main(int argc, char **argv) {
     nprocs = req;
     log_boot(nprocs);
 
-    // cria processos
+    int offset = get_name_offset();
+
     int next_pid = 50000;
     for (int i=0;i<nprocs;i++) {
         Proc *p = &procs[i];
         p->pid = next_pid++;
-        snprintf(p->name, sizeof(p->name), "A%d", i+1);
+        snprintf(p->name, sizeof(p->name), "A%d", i+1+offset);
         p->pc = 0;
-        p->state = NEW;
+        p->state = READY;
         p->rw = '-';
         p->uses_io = app_should_use_io(i);
-        p->state = READY;
         q_push(&ready_q, p);
         log_spawn(p);
     }
 
     try_dispatch();
 
-    // loop principal
     while (1) {
-        // Executa 1 tick se houver corrente
         if (current && current->state == RUNNING) {
             current->pc += 1;
             log_pc(current, current->pc);
@@ -240,13 +243,11 @@ int main(int argc, char **argv) {
             }
         }
 
-        // IRQ1 (término de I/O)
         if (next_irq1_at == now_tick) {
             log_irq1();
             on_irq1();
         }
 
-        // Fim de quantum
         int rlen = q_len(ready_q);
         if (current) {
             if (rlen > 0) {
@@ -266,8 +267,7 @@ int main(int argc, char **argv) {
         }
 
         try_dispatch();
-
-        sleep(QUANTUM);
+        sleep(1);
         now_tick += 1;
     }
 

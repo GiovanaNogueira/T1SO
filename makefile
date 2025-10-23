@@ -2,19 +2,23 @@ CC      = clang
 CFLAGS  = -Wall -Wextra -O2
 LDFLAGS = -lpthread
 
-# Binários “separados”, cada um com seu main()
+# Binários
 BINS = kernel_sim inter_controller app
 
-all: $(BINS) kernel   # 'kernel' é só um alias/cópia de kernel_sim
+all: $(BINS) kernel   # 'kernel' é alias de kernel_sim
+
+# Novo módulo de IPC (shm + sinais)
+IPC_SRCS = ipc_shmsig.c
+IPC_HDRS = ipc_shmsig.h
 
 kernel_sim: kernel_sim.c common.h
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
-inter_controller: inter_controller.c common.h
-	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+inter_controller: inter_controller.c common.h $(IPC_HDRS) $(IPC_SRCS)
+	$(CC) $(CFLAGS) -o $@ inter_controller.c $(IPC_SRCS) $(LDFLAGS)
 
-app: app.c common.h
-	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+app: app.c common.h $(IPC_HDRS) $(IPC_SRCS)
+	$(CC) $(CFLAGS) -o $@ app.c $(IPC_SRCS) $(LDFLAGS)
 
 kernel: kernel_sim
 	cp -f kernel_sim kernel
